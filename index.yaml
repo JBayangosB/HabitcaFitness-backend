@@ -1,0 +1,6 @@
+indexes:
+- kind: User
+  ancestor: yes
+  properties:
+  - name: Date
+    direction: desc

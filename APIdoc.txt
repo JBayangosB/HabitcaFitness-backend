@@ -1,0 +1,45 @@
+type Quest struct {
+	Name string
+	Desc string
+	HealthCurrent int64
+	HealthMax int64
+	MonsterName string
+	QuestLogs []QuestLog
+
+}
+
+type QuestLog struct {
+	Name string
+	Content string
+}
+
+type User struct {
+	Name string
+	HealthCurrent int64
+	HealthMax int64
+	ExpCurrent int64
+	ExpMax int64
+	Gold int64
+	DistanceTotal int64 
+	Level int64
+}
+
+type Reward struct {
+	Exp int64
+	Gold int64
+}
+
+// socialmovieclub-1092.appspot.com/Region/<Melbourne>
+// Returns quest particular to region
+
+// socialmovieclub-1092.appspot.com/CreateUser/<Name>
+// Create user on server
+
+// socialmovieclub-1092.appspot.com/ModifyUser/?name="Bob"&distance="5"
+// Adds distance ran to user
+
+// socialmovieclub-1092.appspot.com/ModifyUser/?name="Bob"
+// Returns user
+
+// socialmovieclub-1092.appspot.com/ModifyUser/?region=Melbourne&name=Bill&km=5
+// Attack monster in region and receive reward
