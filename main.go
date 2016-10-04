@@ -20,6 +20,7 @@ type Quest struct {
 	QuestLogs []QuestLog
 	IsEnabled bool
 	Region string
+	Image string
 }
 
 type QuestLog struct {
@@ -43,6 +44,22 @@ type User struct {
 type Reward struct {
 	Exp int64
 	Gold int64
+}
+
+type Item struct {
+	Name string
+	Desc string
+	Damage int64
+	Health int64
+	LevelNeeded int64
+	GoldNeeded int64
+	ID string
+	Image string
+}
+
+type Inventory struct {
+	UserID string
+	Items []Item
 }
 
 var users map[string]User
@@ -157,7 +174,6 @@ func doesUserExist(n string, c appengine.Context) bool {
 }
 
 
-// }
 // socialmovieclub-1092.appspot.com/ReturnUser/?id="333333"
 // Returns user
 func returnUser(w http.ResponseWriter, r *http.Request){
@@ -166,7 +182,6 @@ func returnUser(w http.ResponseWriter, r *http.Request){
 	query := r.URL.Query()
 	id := query.Get("id")
 	// Setup datastore key
-	//key := datastore.NewKey(c, "User", "", entityID, nil)
 	user := getUser(id, c)
 	c.Infof("User name is: %s", user.Name)
 	// Convert to json
@@ -195,7 +210,6 @@ func getUser(id string, c appengine.Context) User{
 	return user
 }
 
-//Needs fixing
 // adroit-chemist-144605.appspot.com/RegionAttack/
 // ?region="Melbourne"&id="555555"&km="5"
 // Attack monster in region and receive reward
@@ -207,6 +221,7 @@ func regionAttack(w http.ResponseWriter, r *http.Request){
 	quest := getQuest(region, c)
 	// Identify user
 	u := query.Get("id")
+	name := getUser(u, c)
 	// Get distance
 	km := query.Get("km")
 	distance, err := strconv.ParseInt(km, 10, 64)
@@ -222,7 +237,7 @@ func regionAttack(w http.ResponseWriter, r *http.Request){
 	textDam := strconv.FormatInt(dam, 10)
 	l := QuestLog{
 		Name: u,
-		Content: fmt.Sprintf("%s has attacked %s, dealing %s damage!", u, quest.MonsterName, textDam),
+		Content: fmt.Sprintf("%s has attacked %s, dealing %s damage!", name, quest.MonsterName, textDam),
 	}
 	quest.QuestLogs = append(quest.QuestLogs, l)
 	// Update quest
@@ -303,15 +318,234 @@ func updateQuest(quest Quest, c appengine.Context) {
 		c.Infof("Success updating quest")
 	}
 }
+// adroit-chemist-144605.appspot.com/Shop/
+func getShop(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)	
+	// Get all items in order of gold needed
+	q := datastore.NewQuery("Item").Order("GoldNeeded")
+	var items []Item
+	if _, err := q.GetAll(c, &items); err != nil {
+		c.Infof("Error occured getting all items")
+	}
+
+
+
+	// Convert to json
+	js, err := json.Marshal(items)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Return json
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
+// adroit-chemist-144605.appspot.com/Shop/Create/
+// ?name=<Sword>&desc=<Something>&health=<10>&damage=<10>&level=<5>&gold=<50>
+func createItem(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	// Identify item stats
+	query := r.URL.Query()
+	health := query.Get("health")
+	h, err := strconv.ParseInt(health, 10, 64)
+	if err != nil {
+		return
+	}
+	damage := query.Get("damage")
+	d, err := strconv.ParseInt(damage, 10, 64)
+	if err != nil {
+		return
+	}
+	levelNeeded := query.Get("level")
+	l, err := strconv.ParseInt(levelNeeded, 10, 64)
+	if err != nil {
+		return
+	}
+	goldNeeded := query.Get("gold")
+	g, err := strconv.ParseInt(goldNeeded, 10, 64)
+	if err != nil {
+		return
+	}
+	name := query.Get("name")
+	desc := query.Get("desc")
+	// Make item
+	i := Item {
+		Health: h,
+		Damage: d,
+		LevelNeeded: l,
+		GoldNeeded: g,
+		Name: name,
+		Desc: desc,
+	}
+	// Save item
+	// Create key for datastore
+	key := datastore.NewIncompleteKey(c, "Item", nil)
+	// Store in datastore
+	if token, err := datastore.Put(c, key, &i); err != nil {
+		c.Infof("Error setting up item")
+		return
+	} else {
+		c.Infof("Success setting up item")
+		i.ID = strconv.FormatInt(int64(token.IntID()), 10)
+		key := datastore.NewKey(c, "Item", "", token.IntID(), nil)
+		// Save to datastore
+		if _, err := datastore.Put(c, key, &i); err != nil {
+			c.Infof("Error updating item")
+			return
+		} else {
+			c.Infof("item updated")
+		}
+	}
+
+}
+
+func getItem(itemID string, c appengine.Context) Item {
+	id, err := strconv.ParseInt(itemID, 10, 64)
+	if err != nil {
+		c.Infof("Error getting item")
+	}
+	k := datastore.NewKey(c, "Item", "", id, nil)
+	var item Item
+	datastore.Get(c, k, &item)
+	return item
+}
+
+// adroit-chemist-144605.appspot.com/AddUserItem/
+// ?userID=<id>&itemID=<itemID>
+func addUserItem(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	// Identify item owner and item
+	query := r.URL.Query()
+	userID := query.Get("userID")
+	itemID := query.Get("itemID")
+	// Get inventory 
+	q := datastore.NewQuery("Inventory").Filter("UserID =", userID)
+	var results []Inventory
+	if _, err := q.GetAll(c, &results); err != nil {
+		c.Infof("Issue getting inventory")
+	}
+
+	exists := false
+	if ((len(results))> 0) {
+		exists = true
+	} 
+
+
+	var inv Inventory
+	// If inventory exist
+	if exists {
+		c.Infof("Existing inventory")
+		inv = results[0]
+		// Check if user has item
+		for _, value := range inv.Items {
+			if value.ID == itemID {
+				c.Infof("Already has item")
+				http.Error(w, "Already has item", 500)
+				return
+			}
+		}
+		c.Infof("User does not have item")
+
+		// Can user afford item
+		u := getUser(userID, c)
+		i := getItem(itemID, c)
+		if (i.Name == "") {
+			http.Error(w, "Item does not exist", 500)
+			return
+		}
+		if u.Gold < i.GoldNeeded {
+			c.Infof("Too poor")
+			http.Error(w, "Too poor", 500)
+			return
+		}
+		// Add item to inventory
+		inv.Items = append(inv.Items, i)
+
+		// Save inventory
+		// Create key for datastore
+		key := datastore.NewIncompleteKey(c, "Inventory", nil)
+		// Store in datastore
+		if _, err := datastore.Put(c, key, &inv); err != nil {
+			c.Infof("Error adding to inventory")
+			http.Error(w, err.Error(), 500)
+			return
+		} else {
+			c.Infof("Success adding to inventory")
+		}
+		loseGold(i.GoldNeeded, userID, c)
+	} else {
+		// New inventory
+		c.Infof("New Inventory")
+		container := Inventory {
+			UserID: userID,
+		}
+		// Get item
+		i := getItem(itemID, c)
+		// Set item
+		container.Items = append(container.Items, i)
+
+		// Save inventory
+		// Create key for datastore
+		key := datastore.NewIncompleteKey(c, "Inventory", nil)
+		// Store in datastore
+		if _, err := datastore.Put(c, key, &container); err != nil {
+			c.Infof("Error setting up inventory")
+			http.Error(w, err.Error(), 500)
+			return
+		} else {
+			c.Infof("Success setting up inventory")
+		}
+	}
+}
+
+func loseGold(cost int64, userID string, c appengine.Context) {
+	u := getUser(userID, c)
+	u.Gold -= cost
+	updateUser(u, userID, c)
+	c.Infof("Cost paid!")
+}
+
+func getInventory(userID string, c appengine.Context) Inventory {
+	q := datastore.NewQuery("Inventory").Filter("UserID =", userID)
+	var inventory []Inventory
+	if _, err := q.GetAll(c, &inventory); err != nil {
+		c.Infof("Error occured getting all inventory")
+	}
+
+	return inventory[0]
+}
+
+// adroit-chemist-144605.appspot.com/GetUserItems/
+// ?userID=<id>
+func getUserItems(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	// Identify inventory owner
+	query := r.URL.Query()
+	userID := query.Get("userID")
+	inv := getInventory(userID, c)
+	// Convert to json
+	js, err := json.Marshal(inv)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return json
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
 
 func handleRequests() {
-	http.HandleFunc("/", inital)
-	http.HandleFunc("/Region/", returnRegionQuest)
-	http.HandleFunc("/CreateUser/", createUser)
-	// http.HandleFunc("/ModifyUser/", modifyUser)
-	http.HandleFunc("/ReturnUser/", returnUser)
-	http.HandleFunc("/RegionAttack/", regionAttack)
-
+	go http.HandleFunc("/", inital)
+	go http.HandleFunc("/Region/", returnRegionQuest)
+	go http.HandleFunc("/CreateUser/", createUser)
+	go http.HandleFunc("/ReturnUser/", returnUser)
+	go http.HandleFunc("/RegionAttack/", regionAttack)
+	go http.HandleFunc("/Shop/", getShop)
+	go http.HandleFunc("/Shop/Create/", createItem)
+	go http.HandleFunc("/AddUserItem/", addUserItem)
+	go http.HandleFunc("/GetUserItems/", getUserItems)
 }
 
 func init() {
