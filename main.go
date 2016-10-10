@@ -39,6 +39,7 @@ type User struct {
 	Gold int64
 	DistanceTotal int64 
 	Level int64
+	ID string
 }
 
 type Reward struct {
@@ -150,6 +151,16 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 				// Return json
 				w.Header().Set("Content-Type", "application/json")
 				w.Write(js)
+				// Saving id
+				u.ID = strconv.FormatInt(int64(k.IntID()), 10)
+				key := datastore.NewKey(c, "User", "", k.IntID(), nil)
+				// Save to datastore
+				if _, err := datastore.Put(c, key, &u); err != nil {
+					c.Infof("Error updating user")
+					return
+				} else {
+					c.Infof("user updated")
+				}
 			}
 		} else {
 			w.Write([]byte("User already exists"))
@@ -171,6 +182,47 @@ func doesUserExist(n string, c appengine.Context) bool {
 		exists = true
 	} 
 	return exists
+}
+
+// adroit-chemist-144605.appspot.com/LoginUser/
+// ?email=<email>&password=<password>
+// returns id
+func loginUser(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	// Get details
+	query := r.URL.Query()
+	email := query.Get("email")
+	password := query.Get("password")
+	// Query database
+	q := datastore.NewQuery("User").Filter("Email =", email)
+	var results []User
+	if _, err := q.GetAll(c, &results); err != nil {
+		c.Infof("Error finding email")
+	}
+	// Check if users found
+	if ((len(results)) < 0) {
+		w.Write([]byte("No users with that email"))
+		return
+	}
+	// Check if password matches
+	u := results[0]
+	if u.Password != password {
+		w.Write([]byte("Invalid password"))
+		return
+	}
+	// Get user id
+	id := u.ID
+
+	// Return user id
+	js, err := json.Marshal(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Return json
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+
 }
 
 
@@ -540,6 +592,7 @@ func handleRequests() {
 	go http.HandleFunc("/", inital)
 	go http.HandleFunc("/Region/", returnRegionQuest)
 	go http.HandleFunc("/CreateUser/", createUser)
+	go http.HandleFunc("/LoginUser/", loginUser)
 	go http.HandleFunc("/ReturnUser/", returnUser)
 	go http.HandleFunc("/RegionAttack/", regionAttack)
 	go http.HandleFunc("/Shop/", getShop)
