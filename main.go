@@ -324,6 +324,7 @@ func giveReward(id string, km int64, r *http.Request) {
 	c.Infof("User found: %s", user.Name)
 	user.DistanceTotal += km
 	user.ExpCurrent += km*5
+	user.Gold += km*3
 	c.Infof("User exp is now [%d] of max: [%d]", user.ExpCurrent, user.ExpMax)
 	if(user.ExpMax < user.ExpCurrent){
 		// Level up!
@@ -588,6 +589,71 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 	w.Write(js)
 }
 
+func getDistanceboard(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	// Return highest km ran
+	q := datastore.NewQuery("User").Order("-DistanceTotal").Limit(5)
+	var results []User
+	if _, err := q.GetAll(c, &results); err != nil {
+		c.Infof("Issue getting stats")
+	}
+	
+	// Convert to json
+	js, err := json.Marshal(results)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return json
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
+func getGoldboard(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	// Return highest gold
+	q := datastore.NewQuery("User").Order("-Gold").Limit(5)
+	var results []User
+	if _, err := q.GetAll(c, &results); err != nil {
+		c.Infof("Issue getting stats")
+	}
+
+	// Convert to json
+	js, err := json.Marshal(results)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return json
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
+func getLevelboard(w http.ResponseWriter, r *http.Request) {
+	c := appengine.NewContext(r)
+	// Return highest level
+	q := datastore.NewQuery("User").Order("-Level").Limit(5)
+	var results []User
+	if _, err := q.GetAll(c, &results); err != nil {
+		c.Infof("Issue getting stats")
+	}
+
+	// Convert to json
+	js, err := json.Marshal(results)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return json
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
+
+
 func handleRequests() {
 	go http.HandleFunc("/", inital)
 	go http.HandleFunc("/Region/", returnRegionQuest)
@@ -599,6 +665,9 @@ func handleRequests() {
 	go http.HandleFunc("/Shop/Create/", createItem)
 	go http.HandleFunc("/AddUserItem/", addUserItem)
 	go http.HandleFunc("/GetUserItems/", getUserItems)
+	go http.HandleFunc("/GetDistanceboard/", getDistanceboard)
+	go http.HandleFunc("/GetGoldboard/", getGoldboard)
+	go http.HandleFunc("/GetLevelboard/", getLevelboard)
 }
 
 func init() {
